@@ -12,27 +12,28 @@ from quant_signal.utils.helpers import format_currency, format_percentage, safe_
 
 
 def render_header(app_name: str = "QuantSignal AI") -> None:
-    """Renders sleek, modern application header with high-contrast card background."""
+    """Renders sleek, high-contrast application header."""
     st.markdown(
         f"""
         <div style="
-            background: linear-gradient(135deg, #1e222d 0%, #2a2e3d 100%);
-            border: 1px solid #363c4e;
-            border-radius: 12px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 10px;
             padding: 1.25rem 1.75rem;
             margin-bottom: 1.5rem;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         ">
-            <h1 style="margin:0; font-family: 'Inter', 'Segoe UI', sans-serif; color: #ffffff; font-weight: 800; letter-spacing: -0.02em;">
-                ⚡ {app_name} <span style="font-size: 0.5em; color: #00d4ff; background: rgba(0,212,255,0.12); padding: 0.2rem 0.6rem; border-radius: 6px; border: 1px solid rgba(0,212,255,0.3); font-weight: 600;">v1.0</span>
+            <h1 style="margin:0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: #ffffff; font-weight: 800; font-size: 2rem; letter-spacing: -0.02em;">
+                <span style="color: #f59e0b;">⚡</span> {app_name} <span style="font-size: 0.5em; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 0.2rem 0.6rem; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.3); font-weight: 600; vertical-align: middle;">v1.0</span>
             </h1>
-            <p style="margin:0.4rem 0 0 0; color: #a0aec0; font-size: 0.95rem; font-family: 'Inter', sans-serif;">
+            <p style="margin: 0.4rem 0 0 0; color: #cbd5e1; font-size: 0.95rem; font-family: 'Inter', sans-serif;">
                 Production-Ready AI Trading Signal &amp; Quantitative Analysis Dashboard
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 
 
