@@ -12,20 +12,28 @@ from quant_signal.utils.helpers import format_currency, format_percentage, safe_
 
 
 def render_header(app_name: str = "QuantSignal AI") -> None:
-    """Renders sleek, modern application header."""
+    """Renders sleek, modern application header with high-contrast card background."""
     st.markdown(
         f"""
-        <div style="padding: 1rem 0rem; border-bottom: 2px solid #2e3440; margin-bottom: 1.5rem;">
-            <h1 style="margin:0; font-family: 'Inter', sans-serif; color: #eceff4;">
-                ⚡ {app_name} <span style="font-size: 0.5em; color: #88c0d0;">v1.0</span>
+        <div style="
+            background: linear-gradient(135deg, #1e222d 0%, #2a2e3d 100%);
+            border: 1px solid #363c4e;
+            border-radius: 12px;
+            padding: 1.25rem 1.75rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        ">
+            <h1 style="margin:0; font-family: 'Inter', 'Segoe UI', sans-serif; color: #ffffff; font-weight: 800; letter-spacing: -0.02em;">
+                ⚡ {app_name} <span style="font-size: 0.5em; color: #00d4ff; background: rgba(0,212,255,0.12); padding: 0.2rem 0.6rem; border-radius: 6px; border: 1px solid rgba(0,212,255,0.3); font-weight: 600;">v1.0</span>
             </h1>
-            <p style="margin:0; color: #d8dee9; font-size: 0.95rem;">
+            <p style="margin:0.4rem 0 0 0; color: #a0aec0; font-size: 0.95rem; font-family: 'Inter', sans-serif;">
                 Production-Ready AI Trading Signal &amp; Quantitative Analysis Dashboard
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 
 def render_demo_mode_banner() -> None:
