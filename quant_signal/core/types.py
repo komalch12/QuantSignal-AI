@@ -140,3 +140,68 @@ class LiquiditySnapshot:
     total_ask_qty: int
     status: LiquidityStatus
     timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class TradeTick:
+    """Individual trade tick execution from exchange."""
+    symbol: str
+    timestamp: datetime
+    quantity: int
+    price: float = 0.0
+    trade_id: str | None = None
+
+
+@dataclass
+class ETQSnapshot:
+    """Exchange Traded Quantity (ETQ) window aggregations."""
+    symbol: str
+    etq_5m: int = 0
+    etq_20m: int = 0
+    etq_60m: int = 0
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class PriceObservation:
+    """Single LTP price observation for Average Price tracking."""
+    symbol: str
+    timestamp: datetime
+    price: float
+    observation_id: str | None = None
+
+
+@dataclass
+class AveragePriceSnapshot:
+    """Average LTP window aggregations."""
+    symbol: str
+    avg_ltp_20m: float = 0.0
+    avg_ltp_60m: float = 0.0
+    sample_count_20m: int = 0
+    sample_count_60m: int = 0
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class CrossoverProfitabilityResult:
+    """Evaluated trade outcome for a historical SMMA 20/120 crossover signal."""
+    symbol: str
+    company_name: str
+    crossover_time: Any
+    signal: str  # "BUY" or "SELL"
+    entry_price: float
+    exit_price: float | None = None
+    evaluation_horizon: int = 5  # Holding horizon in bars/candles
+    pnl: float | None = None
+    return_pct: float | None = None
+    result: str = "INSUFFICIENT_DATA"  # "PROFITABLE", "UNPROFITABLE", "INSUFFICIENT_DATA"
+    available_data: bool = True
+    ai_confidence_pct: float = 50.0
+    ai_recommendation: str = "HOLD 🟡"
+    avoidance_reason: str = ""
+    trade_decision: str = "AVOID"  # "ACCEPT" or "AVOID"
+    decision_reason: str = ""
+
+
+
+

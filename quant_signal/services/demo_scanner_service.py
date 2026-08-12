@@ -20,13 +20,16 @@ import pandas as pd
 
 from quant_signal.logger import get_logger
 from quant_signal.providers.demo_provider import DemoMarketDataProvider, _DEMO_TIMESTAMP
+from quant_signal.services.etq_service import ExchangeTradedQuantityService
+from quant_signal.services.average_price_service import AveragePriceService
 
 logger = get_logger(__name__)
 
 
 class DemoScannerService:
     """
-    Scanner service backed by DemoMarketDataProvider.
+    Scanner service backed by DemoMarketDataProvider, ExchangeTradedQuantityService,
+    and AveragePriceService.
 
     Provides the same public interface as StockScannerService so that
     all UI views can work with either service via duck typing.
@@ -34,6 +37,8 @@ class DemoScannerService:
     Phase 4 Filters:
     - LTP Filter: 30 <= LTP <= 500 (assignment requirement).
     - Liquidity Filter: Bid Quantity > 1,000,000 AND Ask Quantity > 1,000,000.
+    - Exchange Traded Quantity (ETQ): 5 minutes, 20 minutes, 60 minutes.
+    - Average LTP: 20 minutes, 60 minutes.
     """
 
     DATA_MODE: str = "DEVELOPMENT / DEMO"
@@ -51,6 +56,14 @@ class DemoScannerService:
         self.min_bid_qty = min_bid_qty
         self.min_ask_qty = min_ask_qty
         self.provider = DemoMarketDataProvider()
+        self.etq_service = ExchangeTradedQuantityService()
+        self.avg_price_service = AveragePriceService()
+
+        # Populate ETQ & AveragePrice services with 1m candles for all demo symbols
+        for sym in self.provider.get_symbols():
+            candles_1m = self.provider.get_historical_data(sym, timeframe="1m", days=1)
+            self.etq_service.add_candles(sym, candles_1m)
+            self.avg_price_service.add_candles(sym, candles_1m)
 
         # Pre-build DataFrames once (deterministic — no refresh needed)
         self._all_df: pd.DataFrame = self._build_all_dataframe()
@@ -67,10 +80,12 @@ class DemoScannerService:
     # ── DataFrame Builders ─────────────────────────────────────────────────────
 
     def _build_all_dataframe(self) -> pd.DataFrame:
-        """Builds a Pandas DataFrame of all 39 demo stocks with all required fields."""
+        """Builds a Pandas DataFrame of all 39 demo stocks with all required fields including ETQ and Average LTP."""
         rows = []
         ts_str = _DEMO_TIMESTAMP.strftime("%H:%M:%S") + " (Simulated Demo Time)"
         for symbol, row in self.provider._data.items():
+            etq_snap = self.etq_service.get_etq_snapshot(symbol, current_time=_DEMO_TIMESTAMP)
+            avg_snap = self.avg_price_service.get_average_price_snapshot(symbol, current_time=_DEMO_TIMESTAMP)
             rows.append({
                 "symbol":       symbol,
                 "company_name": row["company"],
@@ -82,12 +97,18 @@ class DemoScannerService:
                 "ask_price":    float(row["ask"]),
                 "ask_quantity": int(row["ask_qty"]),
                 "volume":       int(row["vol"]),
+                "etq_5m":       etq_snap.etq_5m,
+                "etq_20m":      etq_snap.etq_20m,
+                "etq_60m":      etq_snap.etq_60m,
+                "avg_ltp_20m":  avg_snap.avg_ltp_20m,
+                "avg_ltp_60m":  avg_snap.avg_ltp_60m,
             })
 
         if not rows:
             return pd.DataFrame(columns=[
                 "symbol", "company_name", "exchange", "ltp", "timestamp",
                 "bid_price", "bid_quantity", "ask_price", "ask_quantity", "volume",
+                "etq_5m", "etq_20m", "etq_60m", "avg_ltp_20m", "avg_ltp_60m",
             ])
 
         df = pd.DataFrame(rows)
@@ -146,7 +167,7 @@ class DemoScannerService:
         """
         Returns demo stocks filtered by LTP: ₹30 <= LTP <= ₹500.
 
-        Columns: symbol, company_name, exchange, ltp, timestamp
+        Columns: symbol, company_name, exchange, ltp, timestamp, etq_5m, etq_20m, etq_60m, avg_ltp_20m, avg_ltp_60m
         """
         return self._ltp_filtered_df.copy()
 
@@ -166,10 +187,15 @@ class DemoScannerService:
         Bid Quantity > 1,000,000 AND Ask Quantity > 1,000,000.
 
         Required Columns:
-        Symbol, Company Name, LTP, Bid Price, Bid Quantity, Ask Price, Ask Quantity, Timestamp
+        Symbol, Company Name, LTP, Bid Price, Bid Quantity, Ask Price, Ask Quantity, ETQ 5m, ETQ 20m, ETQ 60m, Avg LTP 20m, Avg LTP 60m, Timestamp
         """
-        cols = ["symbol", "company_name", "ltp", "bid_price", "bid_quantity", "ask_price", "ask_quantity", "timestamp"]
+        cols = [
+            "symbol", "company_name", "ltp", "bid_price", "bid_quantity", "ask_price", "ask_quantity",
+            "etq_5m", "etq_20m", "etq_60m", "avg_ltp_20m", "avg_ltp_60m", "timestamp"
+        ]
         return self._liquidity_filtered_df[cols].copy()
+
+
 
     def get_status_summary(self) -> dict[str, Any]:
         """Returns status summary dict compatible with UI."""

@@ -102,5 +102,42 @@ class FyersMarketDataProvider(MarketDataProvider):
         return MarketDepthSnapshot(symbol=symbol)
 
     def get_historical_data(self, symbol: str, timeframe: str, days: int = 60) -> pd.DataFrame:
-        # Placeholder — implement via Fyers history API when needed
+        """Fetches OHLCV historical candlestick data via FYERS API v3 history endpoint."""
+        client = self._adapter.auth_service.get_fyers_client()
+        if not client:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
+        try:
+            from datetime import timedelta
+            to_date = datetime.now()
+            from_date = to_date - timedelta(days=days)
+            resolution = "1" if timeframe in ("1m", "1") else ("5" if timeframe in ("5m", "5") else "D")
+
+            data = {
+                "symbol": f"NSE:{symbol}" if not symbol.startswith("NSE:") else symbol,
+                "resolution": resolution,
+                "date_format": "1",
+                "range_from": from_date.strftime("%Y-%m-%d"),
+                "range_to": to_date.strftime("%Y-%m-%d"),
+                "cont_flag": "1",
+            }
+            res = client.history(data=data)
+            if isinstance(res, dict) and res.get("s") == "ok":
+                candles = res.get("candles", [])
+                records = [
+                    {
+                        "timestamp": datetime.fromtimestamp(c[0]),
+                        "open": float(c[1]),
+                        "high": float(c[2]),
+                        "low": float(c[3]),
+                        "close": float(c[4]),
+                        "volume": int(c[5]),
+                    }
+                    for c in candles
+                ]
+                return pd.DataFrame(records)
+        except Exception as e:
+            logger.error(f"FyersMarketDataProvider.get_historical_data error: {e}")
+
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+

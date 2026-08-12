@@ -16,6 +16,8 @@ import pandas as pd
 from quant_signal.brokers.fyers_adapter import FyersBrokerAdapter
 from quant_signal.core.types import StockSnapshot
 from quant_signal.logger import get_logger
+from quant_signal.services.etq_service import ExchangeTradedQuantityService
+from quant_signal.services.average_price_service import AveragePriceService
 from quant_signal.services.fyers_auth_service import ConnectionState
 
 logger = get_logger(__name__)
@@ -32,6 +34,8 @@ class StockScannerService:
         self.min_price = min_price
         self.max_price = max_price
 
+        self.etq_service = ExchangeTradedQuantityService()
+        self.avg_price_service = AveragePriceService()
         self._lock = threading.Lock()
         self._snapshots: dict[str, StockSnapshot] = {}
         self._last_error: str | None = None
@@ -105,23 +109,35 @@ class StockScannerService:
                 with self._lock:
                     all_symbols = list(self._snapshots.keys())
 
+                def _process_item(item: dict):
+                    sym = item.get("symbol")
+                    ltp = item.get("ltp")
+                    qty = item.get("last_traded_qty") or item.get("vol_traded_today") or item.get("volume")
+                    if sym and ltp is not None and sym in self._snapshots:
+                        self._snapshots[sym].ltp = float(ltp)
+                        self._snapshots[sym].timestamp = datetime.now()
+                        self.live_symbols_received.add(sym)
+                        self.avg_price_service.add_price_observation(
+                            symbol=sym,
+                            timestamp=datetime.now(),
+                            price=float(ltp),
+                        )
+                        if qty:
+                            self.etq_service.add_trade(
+                                symbol=sym,
+                                timestamp=datetime.now(),
+                                quantity=qty,
+                                price=float(ltp),
+                            )
+
                 def on_message(message):
                     with self._lock:
                         if isinstance(message, list):
                             for item in message:
-                                sym = item.get("symbol")
-                                ltp = item.get("ltp")
-                                if sym and ltp is not None and sym in self._snapshots:
-                                    self._snapshots[sym].ltp = float(ltp)
-                                    self._snapshots[sym].timestamp = datetime.now()
-                                    self.live_symbols_received.add(sym)
+                                if isinstance(item, dict):
+                                    _process_item(item)
                         elif isinstance(message, dict):
-                            sym = message.get("symbol")
-                            ltp = message.get("ltp")
-                            if sym and ltp is not None and sym in self._snapshots:
-                                self._snapshots[sym].ltp = float(ltp)
-                                self._snapshots[sym].timestamp = datetime.now()
-                                self.live_symbols_received.add(sym)
+                            _process_item(message)
 
                 def on_error(message):
                     logger.error(f"Fyers WS Error: {message}")
@@ -184,20 +200,31 @@ class StockScannerService:
 
     def get_all_stocks_dataframe(self) -> pd.DataFrame:
         with self._lock:
-            data_rows = [
-                {
-                    "symbol": s.symbol,
-                    "company_name": s.company_name,
-                    "exchange": s.exchange,
-                    "ltp": s.ltp,
-                    "timestamp": s.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-                }
-                for s in self._snapshots.values() if s.ltp > 0
-            ]
+            data_rows = []
+            for s in self._snapshots.values():
+                if s.ltp > 0:
+                    etq_snap = self.etq_service.get_etq_snapshot(s.symbol)
+                    avg_snap = self.avg_price_service.get_average_price_snapshot(s.symbol)
+                    data_rows.append({
+                        "symbol": s.symbol,
+                        "company_name": s.company_name,
+                        "exchange": s.exchange,
+                        "ltp": s.ltp,
+                        "timestamp": s.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        "etq_5m": etq_snap.etq_5m,
+                        "etq_20m": etq_snap.etq_20m,
+                        "etq_60m": etq_snap.etq_60m,
+                        "avg_ltp_20m": avg_snap.avg_ltp_20m,
+                        "avg_ltp_60m": avg_snap.avg_ltp_60m,
+                    })
 
         if not data_rows:
-            return pd.DataFrame(columns=["symbol", "company_name", "exchange", "ltp", "timestamp"])
+            return pd.DataFrame(columns=[
+                "symbol", "company_name", "exchange", "ltp", "timestamp",
+                "etq_5m", "etq_20m", "etq_60m", "avg_ltp_20m", "avg_ltp_60m",
+            ])
         return pd.DataFrame(data_rows)
+
 
     def get_filtered_stocks_dataframe(self) -> pd.DataFrame:
         df = self.get_all_stocks_dataframe()
@@ -228,3 +255,4 @@ class StockScannerService:
             "max_price": self.max_price,
             "last_error": self._last_error or auth_status.error_message if auth_status else None,
         }
+

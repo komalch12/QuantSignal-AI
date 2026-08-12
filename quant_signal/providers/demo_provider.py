@@ -188,24 +188,57 @@ class DemoMarketDataProvider(MarketDataProvider):
             timestamp=_DEMO_TIMESTAMP,
         )
 
-    # ── Historical Data (for SMMA / crossover) ────────────────────────────────
+    # ── Historical Data (for SMMA / crossover / ETQ) ──────────────────────────
 
     def get_historical_data(self, symbol: str, timeframe: str, days: int = 180) -> pd.DataFrame:
         """
         Returns a deterministic synthetic OHLCV DataFrame.
+        Supports '1d' (daily bars) and '1m' (1-minute bars for ETQ).
         Uses a per-symbol seed so each stock has a unique but repeatable history.
-        Suitable for SMMA 20, SMMA 120, and crossover detection development.
         """
         import hashlib
+        import random
+
         row = self._data.get(symbol, {})
         base_price = row.get("ltp", 100.0)
+        daily_vol = row.get("vol", 10_000_000)
 
-        # Deterministic seed per symbol
-        seed = int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16) % (2**31)
-
-        import random
+        # Deterministic seed per symbol and timeframe
+        seed_str = f"{symbol}_{timeframe}"
+        seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16) % (2**31)
         rng = random.Random(seed)
 
+        if timeframe == "1m":
+            # Generate 1-minute intraday bars up to _DEMO_TIMESTAMP (e.g. 120 minutes)
+            total_minutes = max(60, min(days * 60, 240))
+            records = []
+            price = base_price
+            base_time = _DEMO_TIMESTAMP - timedelta(minutes=total_minutes)
+            avg_min_vol = max(1000, daily_vol // 375)
+
+            for m in range(total_minutes):
+                bar_time = base_time + timedelta(minutes=m + 1)
+                change_pct = (rng.random() - 0.495) * 0.004
+                open_ = round(price, 2)
+                close = round(price * (1 + change_pct), 2)
+                high = round(max(open_, close) * (1 + rng.random() * 0.001), 2)
+                low = round(min(open_, close) * (1 - rng.random() * 0.001), 2)
+                vol_factor = 0.7 + 0.6 * rng.random()
+                volume = int(avg_min_vol * vol_factor)
+
+                records.append({
+                    "timestamp": bar_time,
+                    "open": open_,
+                    "high": high,
+                    "low": low,
+                    "close": close,
+                    "volume": volume,
+                })
+                price = close
+
+            return pd.DataFrame(records)
+
+        # Default '1d' daily bars calculation
         records = []
         price = base_price * 0.85  # Start 15% below current
         base_date = _DEMO_TIMESTAMP - timedelta(days=days)
@@ -237,3 +270,4 @@ class DemoMarketDataProvider(MarketDataProvider):
     def get_full_quote_row(self, symbol: str) -> dict[str, Any]:
         """Returns all raw fields for a symbol including bid/ask quantities."""
         return dict(self._data.get(symbol, {}))
+

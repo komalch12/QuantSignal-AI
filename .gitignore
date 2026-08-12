@@ -37,3 +37,9 @@ data/*.csv
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Build & Dist Artifacts
+dist/
+build/
+*.spec
+

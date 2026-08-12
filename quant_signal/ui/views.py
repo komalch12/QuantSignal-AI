@@ -23,6 +23,7 @@ from quant_signal.services.market_depth_service import MarketDepthService
 from quant_signal.services.technical_indicators import TechnicalIndicatorService
 from quant_signal.services.crossover_service import CrossoverService, detect_crossovers_in_dataframe, scan_historical_crossovers
 from quant_signal.services.ml_signal_service import MLSignalService
+from quant_signal.services.crossover_profitability_service import CrossoverProfitabilityService
 from quant_signal.ui.components import render_phase4_summary_metrics
 from quant_signal.utils.helpers import safe_rerun
 
@@ -112,27 +113,58 @@ def render_stock_scanner_view(scanner_service: AnyScannerService) -> bool:
         return auto_refresh
 
     ts_col_name = "Demo Timestamp" if is_demo else "Timestamp"
-    required_cols = ["symbol", "company_name", "exchange", "ltp", "timestamp"]
-    display_df = df[required_cols].copy()
-    display_df = display_df.rename(columns={
+    has_etq = "etq_5m" in df.columns
+    has_avg = "avg_ltp_20m" in df.columns
+
+    required_cols = ["symbol", "company_name", "exchange", "ltp"]
+    if has_etq:
+        required_cols.extend(["etq_5m", "etq_20m", "etq_60m"])
+    if has_avg:
+        required_cols.extend(["avg_ltp_20m", "avg_ltp_60m"])
+    required_cols.append("timestamp")
+
+    display_df = df[[c for c in required_cols if c in df.columns]].copy()
+    rename_dict = {
         "symbol":       "Symbol",
         "company_name": "Company Name",
         "exchange":     "Exchange",
         "ltp":          "LTP",
         "timestamp":    ts_col_name,
-    })
+        "etq_5m":       "ETQ (5m)",
+        "etq_20m":      "ETQ (20m)",
+        "etq_60m":      "ETQ (60m)",
+        "avg_ltp_20m":  "Avg LTP (20m)",
+        "avg_ltp_60m":  "Avg LTP (60m)",
+    }
+    display_df = display_df.rename(columns=rename_dict)
     display_df["LTP"] = display_df["LTP"].apply(lambda x: f"₹{x:,.2f}")
+
+    if "ETQ (5m)" in display_df.columns:
+        display_df["ETQ (5m)"] = display_df["ETQ (5m)"].apply(lambda x: f"{x:,}" if pd.notna(x) else "0")
+        display_df["ETQ (20m)"] = display_df["ETQ (20m)"].apply(lambda x: f"{x:,}" if pd.notna(x) else "0")
+        display_df["ETQ (60m)"] = display_df["ETQ (60m)"].apply(lambda x: f"{x:,}" if pd.notna(x) else "0")
+
+    if "Avg LTP (20m)" in display_df.columns:
+        display_df["Avg LTP (20m)"] = display_df["Avg LTP (20m)"].apply(lambda x: f"₹{x:,.2f}" if pd.notna(x) and x > 0 else "N/A")
+        display_df["Avg LTP (60m)"] = display_df["Avg LTP (60m)"].apply(lambda x: f"₹{x:,.2f}" if pd.notna(x) and x > 0 else "N/A")
+
+    column_config_dict = {
+        "Symbol":        st.column_config.TextColumn("Symbol",        width="medium"),
+        "Company Name":  st.column_config.TextColumn("Company Name",  width="large"),
+        "Exchange":      st.column_config.TextColumn("Exchange",      width="small"),
+        "LTP":           st.column_config.TextColumn("LTP",           width="medium"),
+        "ETQ (5m)":      st.column_config.TextColumn("ETQ (5m)",      width="small"),
+        "ETQ (20m)":     st.column_config.TextColumn("ETQ (20m)",     width="small"),
+        "ETQ (60m)":     st.column_config.TextColumn("ETQ (60m)",     width="small"),
+        "Avg LTP (20m)": st.column_config.TextColumn("Avg LTP (20m)", width="small"),
+        "Avg LTP (60m)": st.column_config.TextColumn("Avg LTP (60m)", width="small"),
+        ts_col_name:     st.column_config.TextColumn(ts_col_name,     width="large" if is_demo else "medium"),
+    }
 
     st.dataframe(
         display_df,
         use_container_width=True,
-        column_config={
-            "Symbol":       st.column_config.TextColumn("Symbol",       width="medium"),
-            "Company Name": st.column_config.TextColumn("Company Name", width="large"),
-            "Exchange":     st.column_config.TextColumn("Exchange",     width="small"),
-            "LTP":          st.column_config.TextColumn("LTP",          width="medium"),
-            ts_col_name:    st.column_config.TextColumn(ts_col_name,    width="large" if is_demo else "medium"),
-        },
+        column_config=column_config_dict,
         hide_index=True,
     )
 
@@ -140,6 +172,8 @@ def render_stock_scanner_view(scanner_service: AnyScannerService) -> bool:
         st.caption("ℹ️ Timestamp is simulated because live broker market data is not connected.")
 
     return auto_refresh
+
+
 
 
 def render_market_depth_view(
@@ -329,7 +363,7 @@ def render_liquidity_filter_view(
             return auto_refresh
 
         display_df = liq_df.copy()
-        display_df = display_df.rename(columns={
+        rename_dict = {
             "symbol":       "Symbol",
             "company_name": "Company Name",
             "ltp":          "LTP",
@@ -337,14 +371,29 @@ def render_liquidity_filter_view(
             "bid_quantity": "Bid Quantity",
             "ask_price":    "Ask Price",
             "ask_quantity": "Ask Quantity",
+            "etq_5m":       "ETQ (5m)",
+            "etq_20m":      "ETQ (20m)",
+            "etq_60m":      "ETQ (60m)",
+            "avg_ltp_20m":  "Avg LTP (20m)",
+            "avg_ltp_60m":  "Avg LTP (60m)",
             "timestamp":    "Demo Timestamp",
-        })
+        }
+        display_df = display_df.rename(columns=rename_dict)
 
         display_df["LTP"] = display_df["LTP"].apply(lambda x: f"₹{x:,.2f}")
         display_df["Bid Price"] = display_df["Bid Price"].apply(lambda x: f"₹{x:,.2f}")
         display_df["Ask Price"] = display_df["Ask Price"].apply(lambda x: f"₹{x:,.2f}")
         display_df["Bid Quantity"] = display_df["Bid Quantity"].apply(lambda x: f"{x:,}")
         display_df["Ask Quantity"] = display_df["Ask Quantity"].apply(lambda x: f"{x:,}")
+
+        if "ETQ (5m)" in display_df.columns:
+            display_df["ETQ (5m)"] = display_df["ETQ (5m)"].apply(lambda x: f"{x:,}" if pd.notna(x) else "0")
+            display_df["ETQ (20m)"] = display_df["ETQ (20m)"].apply(lambda x: f"{x:,}" if pd.notna(x) else "0")
+            display_df["ETQ (60m)"] = display_df["ETQ (60m)"].apply(lambda x: f"{x:,}" if pd.notna(x) else "0")
+
+        if "Avg LTP (20m)" in display_df.columns:
+            display_df["Avg LTP (20m)"] = display_df["Avg LTP (20m)"].apply(lambda x: f"₹{x:,.2f}" if pd.notna(x) and x > 0 else "N/A")
+            display_df["Avg LTP (60m)"] = display_df["Avg LTP (60m)"].apply(lambda x: f"₹{x:,.2f}" if pd.notna(x) and x > 0 else "N/A")
 
         st.markdown(f"**{len(display_df)} Stocks** passed the Liquidity Filter (Bid & Ask Qty > 1,000,000 and ₹30 <= LTP <= ₹500):")
 
@@ -359,10 +408,17 @@ def render_liquidity_filter_view(
                 "Bid Quantity":   st.column_config.TextColumn("Bid Quantity",   width="medium"),
                 "Ask Price":      st.column_config.TextColumn("Ask Price",      width="small"),
                 "Ask Quantity":   st.column_config.TextColumn("Ask Quantity",   width="medium"),
+                "ETQ (5m)":       st.column_config.TextColumn("ETQ (5m)",       width="small"),
+                "ETQ (20m)":      st.column_config.TextColumn("ETQ (20m)",      width="small"),
+                "ETQ (60m)":      st.column_config.TextColumn("ETQ (60m)",      width="small"),
+                "Avg LTP (20m)": st.column_config.TextColumn("Avg LTP (20m)", width="small"),
+                "Avg LTP (60m)": st.column_config.TextColumn("Avg LTP (60m)", width="small"),
                 "Demo Timestamp": st.column_config.TextColumn("Demo Timestamp", width="large"),
             },
             hide_index=True,
         )
+
+
 
         st.caption("ℹ️ Timestamp is simulated because live broker market data is not connected.")
 
@@ -559,16 +615,21 @@ def render_crossover_signals_view(
     df_signals = crossover_service.get_crossover_signals_dataframe()
     cards = crossover_service.get_crossover_summary_cards(df_signals)
 
-    # ── 1. Summary Cards ──────────────────────────────────────────────────────
+    # ── Fetch historical crossovers & win rate metrics ──────────────────────
+    prof_service = CrossoverProfitabilityService(crossover_service=crossover_service)
+    win_metrics = prof_service.get_win_rate_metrics()
+
+
+    # ── Summary Cards ──────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("Total Stocks", f"{cards['total_stocks']}")
+        st.metric("Total Stocks Evaluated", f"{cards['total_stocks']}")
     with c2:
-        st.metric("BUY Crossovers", f"{cards['buy_crossovers']}")
+        st.metric("BUY Win Rate %", f"{win_metrics['buy_win_rate_pct']:.1f}%", delta=f"{win_metrics['buy_profitable_count']}/{win_metrics['buy_evaluated_trades']} Trades")
     with c3:
-        st.metric("SELL Crossovers", f"{cards['sell_crossovers']}")
+        st.metric("SELL Win Rate %", f"{win_metrics['sell_win_rate_pct']:.1f}%", delta=f"{win_metrics['sell_profitable_count']}/{win_metrics['sell_evaluated_trades']} Trades")
     with c4:
-        st.metric("No Crossover (WATCH)", f"{cards['no_crossover']}")
+        st.metric("Overall Win Rate %", f"{win_metrics['overall_win_rate_pct']:.1f}%", delta=f"{win_metrics['overall_profitable_count']}/{win_metrics['overall_evaluated_trades']} Total")
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📋 SMMA 20/120 Crossover Signals Table")
@@ -864,14 +925,14 @@ def render_crossover_signals_view(
 
     # ── Step 3B: Historical Crossover Events Section ───────────────────────
     st.markdown("---")
-    st.markdown("## 📅 Historical Crossover Events  [DEVELOPMENT / DEMO DATA]")
+    st.markdown("## 📅 Historical Crossover Profitability Evaluation  [DEVELOPMENT / DEMO DATA]")
     st.warning(
-        "⚠️ **DEVELOPMENT / DEMO DATA** — Historical crossover events are scanned from "
-        "deterministic demo price series. They are NOT live market signals."
+        "⚠️ **DEVELOPMENT / DEMO DATA** — Trade profitability outcomes are evaluated over a 5-bar holding horizon "
+        "using historical candle series. They are NOT guaranteed future trading results."
     )
     st.caption("ℹ️ Timestamp is simulated because live broker market data is not connected.")
 
-    # ── Ticker selection (independent from the explainability selectbox) ───────────
+    # ── Ticker selection ───────────────────────────────────────────────────────
     hist_col1, hist_col2 = st.columns([1, 2])
     with hist_col1:
         all_demo_symbols = crossover_service.tech_service.provider.get_symbols()
@@ -882,144 +943,115 @@ def render_crossover_signals_view(
             else 0
         )
         hist_symbol = st.selectbox(
-            "📌 Select Ticker Symbol",
+            "📌 Select Ticker Symbol to Inspect Evaluated Trade Outcomes",
             options=all_demo_symbols,
             index=hist_default_idx,
             key="hist_crossover_symbol_select",
         )
     with hist_col2:
         hist_signal_filter = st.radio(
-            "Filter by Signal",
-            options=["All", "BUY", "SELL"],
+            "Filter by Signal Result",
+            options=["All", "PROFITABLE", "UNPROFITABLE", "INSUFFICIENT_DATA"],
             horizontal=True,
-            key="hist_crossover_signal_filter",
+            key="hist_crossover_profit_filter",
         )
 
-    # ── Fetch historical crossovers via Step 3A robust scanner ───────────────
-    hist_stock_res = crossover_service.tech_service.calculate_stock_indicators(
-        symbol=hist_symbol, days=250
-    )
-    hist_df_raw = hist_stock_res.get("history_df", pd.DataFrame())
+    # ── Fetch evaluated crossover trade outcomes ─────────────────────────────
+    eval_results = prof_service.evaluate_symbol_crossovers(symbol=hist_symbol, days=250, horizon_bars=5)
 
-    company_name_map = {}
-    if hasattr(crossover_service.tech_service.provider, "_data"):
-        company_name_map = {
-            k: v.get("company", k)
-            for k, v in crossover_service.tech_service.provider._data.items()
-        }
-    hist_company = company_name_map.get(hist_symbol, hist_symbol)
-
-    # Uses scan_historical_crossovers — the Step 3A robust scanner
-    hist_events = scan_historical_crossovers(
-        symbol=hist_symbol,
-        company_name=hist_company,
-        df=hist_df_raw,
-    )
-    # Reverse so most-recent event appears first in the table
-    hist_events_desc = list(reversed(hist_events))
-
-    # ── Summary Cards ─────────────────────────────────────────────────────────
-    hist_buy_count = sum(1 for e in hist_events if e["crossover_type"] == "BUY")
-    hist_sell_count = sum(1 for e in hist_events if e["crossover_type"] == "SELL")
-    latest_ev = hist_events_desc[0] if hist_events_desc else None
+    # Summary counts for selected symbol
+    sym_eval_trades = [r for r in eval_results if r.result in ("PROFITABLE", "UNPROFITABLE")]
+    sym_prof_count = sum(1 for r in sym_eval_trades if r.result == "PROFITABLE")
+    sym_win_rate = round((sym_prof_count / len(sym_eval_trades)) * 100.0, 1) if sym_eval_trades else 0.0
 
     hc1, hc2, hc3, hc4, hc5 = st.columns(5)
     with hc1:
-        st.metric("Total Historical Crossovers", str(len(hist_events)))
+        st.metric("Symbol Crossovers", str(len(eval_results)))
     with hc2:
-        st.metric("BUY Crossovers", str(hist_buy_count))
+        st.metric("Evaluated Trades", str(len(sym_eval_trades)))
     with hc3:
-        st.metric("SELL Crossovers", str(hist_sell_count))
+        st.metric("Profitable Trades", str(sym_prof_count))
     with hc4:
-        if latest_ev and latest_ev.get("timestamp") is not None:
-            ts_obj = latest_ev["timestamp"]
-            ts_str = (
-                ts_obj.strftime("%Y-%m-%d")
-                if hasattr(ts_obj, "strftime")
-                else str(ts_obj)
-            )
-            st.metric("Latest Crossover", ts_str)
-        else:
-            st.metric("Latest Crossover", "None")
+        st.metric("Win Rate %", f"{sym_win_rate:.1f}%")
     with hc5:
-        st.metric(
-            "Latest Signal",
-            (
-                "🟢 BUY" if latest_ev and latest_ev["crossover_type"] == "BUY"
-                else ("🔴 SELL" if latest_ev and latest_ev["crossover_type"] == "SELL"
-                      else "—")
-            ),
-        )
+        st.metric("Holding Horizon", "5 Bars")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(f"### 📋 Historical Events Table — {hist_symbol} ({hist_company})")
+    st.markdown(f"### 📋 Evaluated Trade Outcomes Table — {hist_symbol}")
 
-    # Apply BUY / SELL filter
-    filtered_events = hist_events_desc
+    # Apply result filter
+    filtered_results = eval_results
     if hist_signal_filter != "All":
-        filtered_events = [
-            e for e in hist_events_desc if e["crossover_type"] == hist_signal_filter
-        ]
+        filtered_results = [r for r in eval_results if r.result == hist_signal_filter]
 
-    if not filtered_events:
-        if hist_signal_filter == "All":
-            st.info(
-                f"No historical crossovers detected for {hist_symbol} in the 250-day window."
-            )
-        else:
-            st.info(
-                f"No {hist_signal_filter} crossovers detected for {hist_symbol} "
-                f"in the 250-day window."
-            )
+    if not filtered_results:
+        st.info(f"No crossover trades match the selected filter '{hist_signal_filter}' for {hist_symbol}.")
     else:
-        hist_table_rows = []
-        for ev in filtered_events:
-            ts_obj = ev.get("timestamp")
+        prof_rows = []
+        for r in filtered_results:
             ts_str = (
-                ts_obj.strftime("%Y-%m-%d %H:%M")
-                if hasattr(ts_obj, "strftime")
-                else str(ts_obj)
+                r.crossover_time.strftime("%Y-%m-%d %H:%M")
+                if hasattr(r.crossover_time, "strftime")
+                else str(r.crossover_time or "N/A")
             )
-            close_val = ev.get("close_price", np.nan)
-            hist_table_rows.append({
-                "Symbol":           ev["symbol"],
-                "Company Name":     ev["company_name"],
-                "Timestamp":        ts_str,
-                "LTP / Close":      f"₹{close_val:,.2f}" if pd.notna(close_val) else "N/A",
-                "Prev SMMA 20":     f"₹{ev['prev_smma_20']:,.2f}",
-                "Prev SMMA 120":    f"₹{ev['prev_smma_120']:,.2f}",
-                "Current SMMA 20":  f"₹{ev['curr_smma_20']:,.2f}",
-                "Current SMMA 120": f"₹{ev['curr_smma_120']:,.2f}",
-                "Crossover Type":   (
-                    "🟢 BUY CROSSOVER"
-                    if ev["crossover_type"] == "BUY"
-                    else "🔴 SELL CROSSOVER"
-                ),
-                "Signal":           (
-                    "🟢 BUY" if ev["signal"] == "BUY" else "🔴 SELL"
-                ),
+            out_badge = (
+                "🟢 PROFITABLE" if r.result == "PROFITABLE"
+                else ("🔴 UNPROFITABLE" if r.result == "UNPROFITABLE" else "🟡 INSUFFICIENT_DATA")
+            )
+            sig_badge = "🟢 BUY" if r.signal == "BUY" else "🔴 SELL"
+            dec_badge = "🟢 ACCEPT" if r.trade_decision == "ACCEPT" else "🔴 AVOID"
+
+            prof_rows.append({
+                "Symbol":            r.symbol,
+                "Company Name":      r.company_name,
+                "Timestamp":         ts_str,
+                "Signal":            sig_badge,
+                "Trade Decision":    dec_badge,
+                "Decision Reason":   r.decision_reason,
+                "Entry Price":       f"₹{r.entry_price:,.2f}",
+                "Exit Price":        f"₹{r.exit_price:,.2f}" if r.exit_price is not None else "N/A",
+                "Horizon":           f"{r.evaluation_horizon} Bars",
+                "PnL (₹)":           f"{r.pnl:+,.2f}" if r.pnl is not None else "N/A",
+                "Return %":          f"{r.return_pct:+,.2f}%" if r.return_pct is not None else "N/A",
+                "Trade Outcome":     out_badge,
+                "AI Confidence %":   f"{r.ai_confidence_pct:.1f}%",
+                "AI Recommendation": r.ai_recommendation,
+                "Avoidance Rationale": r.avoidance_reason,
             })
 
-        hist_display_df = pd.DataFrame(hist_table_rows)
+        prof_df = pd.DataFrame(prof_rows)
         st.dataframe(
-            hist_display_df,
+            prof_df[[
+                "Symbol", "Signal", "Trade Decision", "AI Confidence %", "AI Recommendation",
+                "Entry Price", "Exit Price", "PnL (₹)", "Return %", "Trade Outcome", "Decision Reason"
+            ]],
             use_container_width=True,
             column_config={
-                "Symbol":           st.column_config.TextColumn("Symbol",           width="medium"),
-                "Company Name":     st.column_config.TextColumn("Company Name",     width="large"),
-                "Timestamp":        st.column_config.TextColumn("Timestamp",        width="medium"),
-                "LTP / Close":      st.column_config.TextColumn("LTP / Close",      width="small"),
-                "Prev SMMA 20":     st.column_config.TextColumn("Prev SMMA 20",     width="small"),
-                "Prev SMMA 120":    st.column_config.TextColumn("Prev SMMA 120",    width="small"),
-                "Current SMMA 20":  st.column_config.TextColumn("Current SMMA 20",  width="small"),
-                "Current SMMA 120": st.column_config.TextColumn("Current SMMA 120", width="small"),
-                "Crossover Type":   st.column_config.TextColumn("Crossover Type",   width="medium"),
-                "Signal":           st.column_config.TextColumn("Signal",           width="small"),
+                "Symbol":            st.column_config.TextColumn("Symbol",            width="medium"),
+                "Signal":            st.column_config.TextColumn("Signal",            width="small"),
+                "Trade Decision":    st.column_config.TextColumn("Trade Decision",    width="medium"),
+                "AI Confidence %":   st.column_config.TextColumn("AI Confidence %",   width="small"),
+                "AI Recommendation": st.column_config.TextColumn("AI Recommendation", width="medium"),
+                "Entry Price":       st.column_config.TextColumn("Entry Price",       width="small"),
+                "Exit Price":        st.column_config.TextColumn("Exit Price",        width="small"),
+                "PnL (₹)":           st.column_config.TextColumn("PnL (₹)",           width="small"),
+                "Return %":          st.column_config.TextColumn("Return %",          width="small"),
+                "Trade Outcome":     st.column_config.TextColumn("Trade Outcome",     width="medium"),
+                "Decision Reason":   st.column_config.TextColumn("Decision Reason",   width="large"),
             },
             hide_index=True,
         )
 
+        with st.expander("💡 Trade Decision Rationale & Avoidance Explanation", expanded=True):
+            for r in filtered_results:
+                if r.trade_decision == "AVOID":
+                    st.error(f"🔴 **{r.symbol}** | Decision: **AVOID** | Signal: **{r.signal}** @ {r.crossover_time} $\\rightarrow$ {r.decision_reason}")
+                else:
+                    st.success(f"🟢 **{r.symbol}** | Decision: **ACCEPT** | Signal: **{r.signal}** @ {r.crossover_time} $\\rightarrow$ {r.decision_reason}")
+
+
     return auto_refresh
+
 
 
 def render_ai_ml_signals_view(
