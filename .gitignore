@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Environment & Secrets
+.env
+.env.*
+*.env
+access_token.txt
+refresh_token.txt
+# Streamlit
+.streamlit/
+*.streamlit
+
+# Logs
+logs/
+*.log
+
+# Models & Data Cache
+saved_models/*.joblib
+saved_models/*.pkl
+data/*.csv
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db

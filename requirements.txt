@@ -1,0 +1,22 @@
+# QuantSignal AI - Project Dependencies
+
+# Web Framework & Dashboard
+streamlit
+
+# Data Processing & Numerical Computing
+pandas
+numpy
+
+# Machine Learning & Model Persistence
+scikit-learn
+joblib
+
+# Technical Analysis
+ta
+
+# Broker Integration (Fyers API v3)
+fyers-apiv3
+websocket-client
+
+# Utilities & Configuration Management
+python-dotenv
